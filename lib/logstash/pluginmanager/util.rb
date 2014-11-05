@@ -1,5 +1,6 @@
 
 class LogStash::PluginManager::Util
+  @prefix = 'logstash-'
 
   def self.logstash_plugin?(gem)
 
@@ -47,6 +48,10 @@ class LogStash::PluginManager::Util
           break
       end
     end
+  end
+
+  def self.append_prefix(plugin_name)
+    return plugin_name.start_with?(@prefix)?plugin_name:@prefix + plugin_name
   end
 
 end

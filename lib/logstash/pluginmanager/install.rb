@@ -20,17 +20,18 @@ class LogStash::PluginManager::Install < Clamp::Command
     LogStash::Environment.load_logstash_gemspec!
 
     ::Gem.configuration.verbose = false
-    ::Gem.configuration[:http_proxy] = proxy 
+    ::Gem.configuration[:http_proxy] = proxy
 
-    puts ("validating #{plugin} #{version}")
+    plugin_name = LogStash::PluginManager::Util.append_prefix(plugin)
+    puts ("validating #{plugin_name} #{version}")
 
-    unless gem_path = (plugin =~ /\.gem$/ && File.file?(plugin)) ? plugin : LogStash::PluginManager::Util.download_gem(plugin, version)
-      $stderr.puts ("Plugin does not exist '#{plugin}'. Aborting")
+    unless gem_path = (plugin_name =~ /\.gem$/ && File.file?(plugin_name)) ? plugin_name : LogStash::PluginManager::Util.download_gem(plugin_name, version)
+      $stderr.puts ("Plugin does not exist '#{plugin_name}'. Aborting")
       return 99
     end
 
     unless gem_meta = LogStash::PluginManager::Util.logstash_plugin?(gem_path)
-      $stderr.puts ("Invalid logstash plugin gem '#{plugin}'. Aborting...")
+      $stderr.puts ("Invalid logstash plugin_name gem '#{plugin_name}'. Aborting...")
       return 99
     end
 
@@ -55,7 +56,7 @@ class LogStash::PluginManager::Install < Clamp::Command
     options = {}
     options[:document] = []
     inst = Gem::DependencyInstaller.new(options)
-    inst.install plugin, version
+    inst.install plugin_name, version
     specs, _ = inst.installed_gems
     puts ("Successfully installed '#{specs.name}' with version '#{specs.version}'")
     return 0

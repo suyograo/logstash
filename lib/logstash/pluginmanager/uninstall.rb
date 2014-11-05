@@ -15,15 +15,16 @@ class LogStash::PluginManager::Uninstall < Clamp::Command
 
     ::Gem.configuration.verbose = false
 
-    puts ("Validating removal of #{plugin}.")
+    plugin_name = LogStash::PluginManager::Util.append_prefix(plugin)
+    puts ("Validating removal of #{plugin_name}.")
     
-    unless gem_data = LogStash::PluginManager::Util.logstash_plugin?(plugin)
+    unless gem_data = LogStash::PluginManager::Util.logstash_plugin?(plugin_name)
       $stderr.puts ("Trying to remove a non logstash plugin. Aborting")
       return 99
     end
 
-    puts ("Uninstalling plugin '#{plugin}' with version '#{gem_data.version}'.")
-    ::Gem::Uninstaller.new(plugin, {}).uninstall
+    puts ("Uninstalling plugin '#{plugin_name}' with version '#{gem_data.version}'.")
+    ::Gem::Uninstaller.new(plugin_name, {}).uninstall
     return 
   end
 

@@ -21,13 +21,15 @@ class LogStash::PluginManager::Update < Clamp::Command
     ::Gem.configuration.verbose = false
     ::Gem.configuration[:http_proxy] = proxy
 
+    plugin_name = LogStash::PluginManager::Util.append_prefix(plugin)
+
     if plugin.nil?
       puts ("Updating all plugins")
     else
-      puts ("Updating #{plugin} plugin")
+      puts ("Updating #{plugin_name} plugin")
     end
 
-    specs = LogStash::PluginManager::Util.matching_specs(plugin).select{|spec| LogStash::PluginManager::Util.logstash_plugin?(spec) }
+    specs = LogStash::PluginManager::Util.matching_specs(plugin_name).select{|spec| LogStash::PluginManager::Util.logstash_plugin?(spec) }
     if specs.empty?
       $stderr.puts ("No plugins found to update or trying to update a non logstash plugin.")
       return 99
