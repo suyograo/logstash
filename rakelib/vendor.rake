@@ -1,260 +1,144 @@
-
-DOWNLOADS = {
-  "elasticsearch" => { "version" => "1.3.0", "sha1" => "f9e02e2cdcb55e7e8c5c60e955f793f68b7dec75" },
-  "collectd" => { "version" => "5.4.0", "sha1" => "a90fe6cc53b76b7bdd56dc57950d90787cb9c96e" },
-  #"jruby" => { "version" => "1.7.13", "sha1" => "0dfca68810a5eed7f12ae2007dc2cc47554b4cc6" }, # jruby-complete
-  "jruby" => { "version" => "1.7.16", "sha1" => "4c912b648f6687622ba590ca2a28746d1cd5d550" },
-  "kibana" => { "version" => "3.1.2", "sha1" => "a59ea4abb018a7ed22b3bc1c3bcc6944b7009dc4" },
-  "geoip" => {
-    "GeoLiteCity" => { "version" => "2013-01-18", "sha1" => "15aab9a90ff90c4784b2c48331014d242b86bf82", },
-    "GeoIPASNum" => { "version" => "2014-02-12", "sha1" => "6f33ca0b31e5f233e36d1f66fbeae36909b58f91", }
-  },
-  "kafka" => { "version" => "0.8.1.1", "sha1" => "d73cc87fcb01c62fdad8171b7bb9468ac1156e75", "scala_version" => "2.9.2" },
-}
-
-DONEFILE = File.join(LogStash::Environment.gem_home, ".done")
-
-def vendor(*args)
-  return File.join("vendor", *args)
-end
-
-
-# Untar any files from the given tarball file name.
-#
-# A tar entry is passed to the block. The block should should return
-# * nil to skip this file
-# * or, the desired string filename to write the file to.
-def untar(tarball, &block)
-  Rake::Task["dependency:archive-tar-minitar"].invoke
-  require "archive/tar/minitar"
-  tgz = Zlib::GzipReader.new(File.open(tarball))
-  # Pull out typesdb
-  tar = Archive::Tar::Minitar::Input.open(tgz)
-  tar.each do |entry|
-    path = block.call(entry)
-    next if path.nil?
-    parent = File.dirname(path)
-
-    mkdir_p parent unless File.directory?(parent)
-
-    # Skip this file if the output file is the same size
-    if entry.directory?
-      mkdir path unless File.directory?(path)
-    else
-      entry_mode = entry.instance_eval { @mode } & 0777
-      if File.exists?(path)
-        stat = File.stat(path)
-        # TODO(sissel): Submit a patch to archive-tar-minitar upstream to
-        # expose headers in the entry.
-        entry_size = entry.instance_eval { @size }
-        # If file sizes are same, skip writing.
-        next if stat.size == entry_size && (stat.mode & 0777) == entry_mode
-      end
-      puts "Extracting #{entry.full_name} from #{tarball} #{entry_mode.to_s(8)}"
-      File.open(path, "w") do |fd|
-        # eof? check lets us skip empty files. Necessary because the API provided by
-        # Archive::Tar::Minitar::Reader::EntryStream only mostly acts like an
-        # IO object. Something about empty files in this EntryStream causes
-        # IO.copy_stream to throw "can't convert nil into String" on JRuby
-        # TODO(sissel): File a bug about this.
-        while !entry.eof?
-          chunk = entry.read(16384)
-          fd.write(chunk)
-        end
-          #IO.copy_stream(entry, fd)
-      end
-      File.chmod(entry_mode, path)
-    end
-  end
-  tar.close
-end # def untar
-
 namespace "vendor" do
+  VERSIONS = {
+    "jruby" => { "version" => "1.7.17", "sha1" => "e4621bbcc51242061eaa9b62caee69c2a2b433f0" },
+  }
+
+  def vendor(*args)
+    return File.join("vendor", *args)
+  end
+
+  # Untar any files from the given tarball file name.
+  #
+  # A tar entry is passed to the block. The block should should return
+  # * nil to skip this file
+  # * or, the desired string filename to write the file to.
+  def self.untar(tarball, &block)
+    Rake::Task["dependency:archive-tar-minitar"].invoke
+    require "archive/tar/minitar"
+    tgz = Zlib::GzipReader.new(File.open(tarball,"rb"))
+    tar = Archive::Tar::Minitar::Input.open(tgz)
+    tar.each do |entry|
+      path = block.call(entry)
+      next if path.nil?
+      parent = File.dirname(path)
+
+      FileUtils.mkdir_p(parent) unless File.directory?(parent)
+
+      # Skip this file if the output file is the same size
+      if entry.directory?
+        FileUtils.mkdir(path) unless File.directory?(path)
+      else
+        entry_mode = entry.instance_eval { @mode } & 0777
+        if File.exists?(path)
+          stat = File.stat(path)
+          # TODO(sissel): Submit a patch to archive-tar-minitar upstream to
+          # expose headers in the entry.
+          entry_size = entry.instance_eval { @size }
+          # If file sizes are same, skip writing.
+          if Gem.win_platform?
+            #Do not fight with windows permission scheme
+            next if stat.size == entry_size
+          else
+            next if stat.size == entry_size && (stat.mode & 0777) == entry_mode
+          end
+        end
+        puts "Extracting #{entry.full_name} from #{tarball} #{entry_mode.to_s(8)}"
+        File.open(path, "wb") do |fd|
+          # eof? check lets us skip empty files. Necessary because the API provided by
+          # Archive::Tar::Minitar::Reader::EntryStream only mostly acts like an
+          # IO object. Something about empty files in this EntryStream causes
+          # IO.copy_stream to throw "can't convert nil into String" on JRuby
+          # TODO(sissel): File a bug about this.
+          while !entry.eof?
+            chunk = entry.read(16384)
+            fd.write(chunk)
+          end
+            #IO.copy_stream(entry, fd)
+        end
+        File.chmod(entry_mode, path)
+      end
+    end
+    tar.close
+  end # def untar
+
   task "jruby" do |task, args|
     name = task.name.split(":")[1]
-    info = DOWNLOADS[name]
+    info = VERSIONS[name]
     version = info["version"]
-    #url = "http://jruby.org.s3.amazonaws.com/downloads/#{version}/jruby-complete-#{version}.jar"
-    url = "http://jruby.org.s3.amazonaws.com/downloads/#{version}/jruby-bin-#{version}.tar.gz"
 
+    discard_patterns = Regexp.union([ /^samples/,
+                                      /@LongLink/,
+                                      /lib\/ruby\/1.8/,
+                                      /lib\/ruby\/2.0/,
+                                      /lib\/ruby\/shared\/rdoc/,
+
+                                      # Don't provide jar_installer.rb from jruby's release
+                                      # We'll provide a newer version with some bugfixes.
+                                      # See the 'vendor:jruby-patch' task for this.
+                                      /lib\/ruby\/shared\/jar_installer\.rb$/,
+    ])
+
+    url = "http://jruby.org.s3.amazonaws.com/downloads/#{version}/jruby-bin-#{version}.tar.gz"
     download = file_fetch(url, info["sha1"])
+
     parent = vendor(name).gsub(/\/$/, "")
     directory parent => "vendor" do
-      mkdir parent
+      next if parent =~ discard_patterns
+      FileUtils.mkdir(parent)
     end.invoke unless Rake::Task.task_defined?(parent)
 
     prefix_re = /^#{Regexp.quote("jruby-#{version}/")}/
     untar(download) do |entry|
       out = entry.full_name.gsub(prefix_re, "")
-      next if out =~ /^samples/
-      next if out =~ /@LongLink/
+      next if out =~ discard_patterns
       vendor(name, out)
     end # untar
+    Rake::Task["vendor:jruby-patch"].invoke
   end # jruby
+
+  task "jruby-patch" do |task, args|
+    # Patch JRuby's old jar-dependencies thing. This fixes bugs on windows
+    patched_jar_installer = File.join(File.dirname(__FILE__), "..", "tools", "patches", "jar_installer.rb")
+    patch_target = File.join(File.dirname(__FILE__), "..", "vendor", "jruby", "lib", "ruby", "shared", "jar_installer.rb")
+    FileUtils.cp(patched_jar_installer, patch_target)
+  end
   task "all" => "jruby"
 
-  task "geoip" do |task, args|
-    vendor_name = "geoip"
-    parent = vendor(vendor_name).gsub(/\/$/, "")
-    directory parent => "vendor" do
-      mkdir parent
-    end.invoke unless Rake::Task.task_defined?(parent)
+  task "system_gem", :jruby_bin, :name, :version do |task, args|
+    jruby_bin = args[:jruby_bin]
+    name = args[:name]
+    version = args[:version]
 
-    vendor(vendor_name).tap { |v| mkdir_p v unless File.directory?(v) }
-    files = DOWNLOADS[vendor_name]
-    files.each do |name, info|
-      version = info["version"]
-      url = "http://logstash.objects.dreamhost.com/maxmind/#{name}-#{version}.dat.gz"
-      download = file_fetch(url, info["sha1"])
-      outpath = vendor(vendor_name, "#{name}.dat")
-      tgz = Zlib::GzipReader.new(File.open(download))
-      begin
-        File.open(outpath, "w") do |out|
-          IO::copy_stream(tgz, out)
-        end
-      rescue
-        File.unlink(outpath) if File.file?(outpath)
-        raise
-      end
-      tgz.close
+    IO.popen([jruby_bin, "-S", "gem", "list", name, "--version", version, "--installed"], "r") do |io|
+      io.readlines # ignore
     end
-  end
-  #task "all" => "geoip"
-
-  task "kibana" do |task, args|
-    name = task.name.split(":")[1]
-    info = DOWNLOADS[name]
-    version = info["version"]
-    url = "https://download.elasticsearch.org/kibana/kibana/kibana-#{version}.tar.gz"
-    download = file_fetch(url, info["sha1"])
-
-    parent = vendor(name).gsub(/\/$/, "")
-    directory parent => "vendor" do
-      mkdir parent
-    end.invoke unless Rake::Task.task_defined?(parent)
-
-    prefix_re = /^#{Regexp.quote("kibana-#{version}/")}/
-    untar(download) do |entry|
-      vendor(name, entry.full_name.gsub(prefix_re, ""))
-    end # untar
-  end # task kibana
-  task "all" => "kibana"
-
-  task "kafka" do |task, args|
-    name = task.name.split(":")[1]
-    info = DOWNLOADS[name]
-    version = info["version"]
-    scala_version = info["scala_version"]
-    url = "https://archive.apache.org/dist/kafka/#{version}/kafka_#{scala_version}-#{version}.tgz"
-    download = file_fetch(url, info["sha1"])
-
-    parent = vendor(name).gsub(/\/$/, "")
-    directory parent => "vendor" do
-      mkdir parent
-    end.invoke unless Rake::Task.task_defined?(parent)
-
-    untar(download) do |entry|
-      next unless entry.full_name =~ /\.jar$/
-      vendor(name, File.basename(entry.full_name))
+    unless $?.success?
+      puts("Installing #{name} #{version} because the build process needs it.")
+      system(jruby_bin, "-S", "gem", "install", name, "-v", version, "--no-ri", "--no-rdoc")
+      raise RuntimeError, $!.to_s unless $?.success?
     end
-  end # task kafka
-  #task "all" => "kafka"
-
-  task "elasticsearch" do |task, args|
-    name = task.name.split(":")[1]
-    info = DOWNLOADS[name]
-    version = info["version"]
-    url = "https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-#{version}.tar.gz"
-    download = file_fetch(url, info["sha1"])
-
-    parent = vendor(name).gsub(/\/$/, "")
-    directory parent => "vendor" do
-      mkdir parent
-    end.invoke unless Rake::Task.task_defined?(parent)
-
-    untar(download) do |entry|
-      next unless entry.full_name =~ /\.jar$/
-      vendor(name, File.basename(entry.full_name))
-    end # untar
-  end # task elasticsearch
-  #task "all" => "elasticsearch"
-
-  task "collectd" do |task, args|
-    name = task.name.split(":")[1]
-    info = DOWNLOADS[name]
-    version = info["version"]
-    sha1 = info["sha1"]
-    url = "https://collectd.org/files/collectd-#{version}.tar.gz"
-
-    download = file_fetch(url, sha1)
-
-    parent = vendor(name).gsub(/\/$/, "")
-    directory parent => "vendor" do
-      mkdir parent
-    end unless Rake::Task.task_defined?(parent)
-
-    file vendor(name, "types.db") => [download, parent] do |task, args|
-      next if File.exists?(task.name)
-      untar(download) do |entry|
-        next unless entry.full_name == "collectd-#{version}/src/types.db"
-        vendor(name, File.basename(entry.full_name))
-      end # untar
-    end.invoke
+    task.reenable # Allow this task to be run again
   end
-  #task "all" => "collectd"
 
   namespace "force" do
-    task "delete_donefile" do
-      File.delete(DONEFILE) if File.exist?(DONEFILE)
-    end
-
-    task "gems" => ["delete_donefile", "vendor:gems"]
+    task "gems" => ["vendor:gems"]
   end
 
-  task "gems" => [ "dependency:bundler" ] do
+  task "gems", [:bundle] do |task, args|
     require "logstash/environment"
     Rake::Task["dependency:rbx-stdlib"] if LogStash::Environment.ruby_engine == "rbx"
     Rake::Task["dependency:stud"].invoke
+    Rake::Task["dependency:bundler"].invoke
 
-    # Skip bundler if we've already done this recently.
-    if File.file?(DONEFILE)
-      age = (Time.now - File.lstat(DONEFILE).mtime)
-      # Skip if the donefile was last modified recently
-      next if age < 300
-    end
-
-    # Try installing a few times in case we hit the "bad_record_mac" ssl error during installation.
-    10.times do
-      begin
-        #Bundler::CLI.start(["install", "--gemfile=tools/Gemfile", "--path", LogStash::Environment.gem_home, "--clean", "--standalone", "--without", "development", "--jobs", 4])
-        # There doesn't seem to be a way to invoke Bundler::CLI *and* have a
-        # different GEM_HOME set that doesn't impact Bundler's view of what
-        # gems are available. I asked about this in #bundler on freenode, and I
-        # was told to stop using the bundler ruby api. Oh well :(
-        bundler = File.join(Gem.bindir, "bundle")
-        if ENV['USE_RUBY'] == '1'
-          # Use the local jruby binary
-          jruby = 'ruby'
-        else
-          # Use the vendored jruby binary
-          jruby = File.join("vendor", "jruby", "bin", "jruby")
-        end
-        cmd = [jruby,  bundler, "install", "--gemfile=tools/Gemfile", "--path", LogStash::Environment::BUNDLE_DIR, "--standalone", "--clean", "--without", "development", "--jobs", "4"]
-        system(*cmd)
-        raise RuntimeError, $!.to_s unless $?.success?
-        break
-      rescue Gem::RemoteFetcher::FetchError => e
-        puts e.message
-        puts e.backtrace.inspect
-        sleep 5 #slow down a bit before retry
-      end
-    end
-    File.write(DONEFILE, Time.now.to_s)
+    puts("Invoking bundler install...")
+    output, exception = LogStash::Bundler.invoke_bundler!(:install => true)
+    puts(output)
+    raise(exception) if exception
   end # task gems
   task "all" => "gems"
 
-  desc 'Clean the vendored files'
+  desc "Clean the vendored files"
   task :clean do
-    rm_rf vendor
+    rm_rf(vendor)
   end
 end

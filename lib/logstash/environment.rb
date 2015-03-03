@@ -1,6 +1,44 @@
 require "logstash/errors"
 require 'logstash/version'
 
+# monkey patch RubyGems to silence ffi warnings:
+#
+# WARN: Unresolved specs during Gem::Specification.reset:
+#       ffi (>= 0)
+# WARN: Clearing out unresolved specs.
+# Please report a bug if this causes problems.
+#
+# see https://github.com/elasticsearch/logstash/issues/2556 and https://github.com/rubygems/rubygems/issues/1070
+#
+# this code is from Rubygems v2.1.9 in JRuby 1.7.17. Per tickets this issue should be solved at JRuby >= 1.7.20.
+
+# this method implementation works for Rubygems version 2.1.0 and up, verified up to 2.4.6
+if Gem::Version.new(Gem::VERSION) >= Gem::Version.new("2.1.0") && Gem::Version.new(Gem::VERSION) < Gem::Version.new("2.5.0")
+  class Gem::Specification
+    def self.reset
+      @@dirs = nil
+      Gem.pre_reset_hooks.each { |hook| hook.call }
+      @@all = nil
+      @@stubs = nil
+      _clear_load_cache
+      unresolved = unresolved_deps
+      unless unresolved.empty?
+        unless (unresolved.size == 1 && unresolved["ffi"])
+          w = "W" + "ARN"
+          warn "#{w}: Unresolved specs during Gem::Specification.reset:"
+          unresolved.values.each do |dep|
+            warn "      #{dep}"
+          end
+          warn "#{w}: Clearing out unresolved specs."
+          warn "Please report a bug if this causes problems."
+        end
+        unresolved.clear
+      end
+      Gem.post_reset_hooks.each { |hook| hook.call }
+    end
+  end
+end
+
 module LogStash
   module Environment
     extend self
@@ -9,8 +47,11 @@ module LogStash
     JAR_DIR = ::File.join(LOGSTASH_HOME, "vendor", "jar")
     ELASTICSEARCH_DIR = ::File.join(LOGSTASH_HOME, "vendor", "elasticsearch")
     BUNDLE_DIR = ::File.join(LOGSTASH_HOME, "vendor", "bundle")
-    PLUGINS_DIR = ::File.join(LOGSTASH_HOME, "vendor", "plugins")
-    GEMFILE_PATH = ::File.join(LOGSTASH_HOME, "tools", "Gemfile")
+    GEMFILE_PATH = ::File.join(LOGSTASH_HOME, "Gemfile")
+    BUNDLE_CONFIG_PATH = ::File.join(LOGSTASH_HOME, ".bundle", "config")
+    BOOTSTRAP_GEM_PATH = ::File.join(LOGSTASH_HOME, 'build', 'bootstrap')
+
+    LOGSTASH_ENV = (ENV["LS_ENV"] || 'production').to_s.freeze
 
     # loads currently embedded elasticsearch jars
     # @raise LogStash::EnvironmentError if not running under JRuby or if no jar files are found
@@ -29,20 +70,51 @@ module LogStash
       end
     end
 
-    def gem_home
+    def logstash_gem_home
       ::File.join(BUNDLE_DIR, ruby_engine, gem_ruby_version)
     end
 
-    def plugins_home
-      # plugins are gems, respect same path structure as core gems_home
-      ::File.join(PLUGINS_DIR, ruby_engine, gem_ruby_version)
+    def env
+      LOGSTASH_ENV
     end
 
-    def set_gem_paths!
-      require ::File.join(BUNDLE_DIR, "bundler", "setup.rb")
-      ENV["GEM_PATH"] = gem_home
-      ENV["GEM_HOME"] = plugins_home
-      Gem.paths = plugins_home
+    def production?
+      env.downcase == "production"
+    end
+
+    def development?
+      env.downcase == "development"
+    end
+
+    def test?
+      env.downcase == "test"
+    end
+
+    def bundler_setup!(options = {})
+      options = {:without => [:development]}.merge(options)
+      options[:without] = Array(options[:without])
+      # make sure we use our own nicely installed bundler and not a rogue, bad, mean, ugly, stupid other bundler. bad bundler, bad bad bundler go away.
+      ::Gem.clear_paths
+      ::Gem.paths = ENV['GEM_HOME'] = ENV['GEM_PATH'] = logstash_gem_home
+
+      # set BUNDLE_GEMFILE ENV before requiring bundler to avoid bundler recurse and load unrelated Gemfile(s)
+      ENV["BUNDLE_GEMFILE"] = LogStash::Environment::GEMFILE_PATH
+
+      require "bundler"
+      require "logstash/bundler"
+
+      ::Bundler.settings[:path]    = LogStash::Environment::BUNDLE_DIR
+      ::Bundler.settings[:without] = options[:without].join(":")
+      # in the context of Bundler.setup it looks like this is useless here because Gemfile path can only be specified using
+      # the ENV, see https://github.com/bundler/bundler/blob/v1.8.3/lib/bundler/shared_helpers.rb#L103
+      ::Bundler.settings[:gemfile] = LogStash::Environment::GEMFILE_PATH
+
+      ::Bundler.reset!
+      ::Bundler.setup
+    end
+
+    def ruby_bin
+      ENV["USE_RUBY"] == "1" ? "ruby" : File.join("vendor", "jruby", "bin", "jruby")
     end
 
     # @return [String] major.minor ruby version, ex 1.9
@@ -64,6 +136,10 @@ module LogStash
       @jruby ||= !!(RUBY_PLATFORM == "java")
     end
 
+    def windows?
+      Gem.win_platform?
+    end
+
     def vendor_path(path)
       return ::File.join(LOGSTASH_HOME, "vendor", path)
     end
@@ -80,22 +156,6 @@ module LogStash
       return ::File.join(LOGSTASH_HOME, "locales", path)
     end
 
-    def load_logstash_gemspec!
-      logstash_spec = Gem::Specification.new do |gem|
-        gem.authors       = ["Jordan Sissel", "Pete Fritchman"]
-        gem.email         = ["jls@semicomplete.com", "petef@databits.net"]
-        gem.description   = %q{scalable log and event management (search, archive, pipeline)}
-        gem.summary       = %q{logstash - log and event management}
-        gem.homepage      = "http://logstash.net/"
-        gem.license       = "Apache License (2.0)"
-
-        gem.name          = "logstash"
-        gem.version       = LOGSTASH_VERSION
-      end
-
-      Gem::Specification.add_spec logstash_spec
-    end
-
     def load_locale!
       require "i18n"
       I18n.enforce_available_locales = true
@@ -105,3 +165,5 @@ module LogStash
     end
   end
 end
+
+require "logstash/patches"

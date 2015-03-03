@@ -1,33 +1,33 @@
-
 namespace "test" do
-  task "default" => [ "bootstrap", "test:prep" ] do
+  def run_rspec(*args)
     require "logstash/environment"
-    LogStash::Environment.set_gem_paths!
-    require 'rspec/core'
-    RSpec::Core::Runner.run(Rake::FileList["spec/**/*.rb"])
+    LogStash::Environment.bundler_setup!({:without => []})
+    require "rspec/core/runner"
+    require "rspec"
+    RSpec::Core::Runner.run([*args])
   end
 
-  task "fail-fast" => [ "bootstrap", "test:prep" ] do
-    require "logstash/environment"
-    LogStash::Environment.set_gem_paths!
-    require 'rspec/core'
-    RSpec::Core::Runner.run(["--fail-fast", *Rake::FileList["spec/**/*.rb"]])
+  task "core" do
+    run_rspec(Rake::FileList["spec/**/*_spec.rb"])
   end
 
-  task "prep" do
-    plugins = [
-     'logstash-filter-clone',
-     'logstash-filter-mutate',
-     'logstash-input-generator',
-     'logstash-input-stdin',
-     'logstash-input-tcp',
-     'logstash-output-stdout'
-    ]
-    plugins.each do |plugin|
-      Rake::Task["plugin:install"].invoke(plugin)
-    end
+  task "core-fail-fast" do
+    run_rspec("--fail-fast", Rake::FileList["spec/**/*_spec.rb"])
   end
 
+  task "plugins" do
+    run_rspec("--order", "rand", Rake::FileList[File.join(ENV["GEM_HOME"], "gems/logstash-*/spec/{input,filter,codec,output}s/*_spec.rb")])
+  end
+
+  task "install-core" => ["bootstrap", "plugin:install-core", "plugin:install-development-dependencies"]
+
+  task "install-default" => ["bootstrap", "plugin:install-default", "plugin:install-development-dependencies"]
+
+  task "install-all" => ["bootstrap", "plugin:install-all", "plugin:install-development-dependencies"]
+
+  task "install-vendor-plugins" => ["bootstrap", "plugin:install-vendor", "plugin:install-development-dependencies"]
+
+  task "install-jar-dependencies-plugins" => ["bootstrap", "plugin:install-jar-dependencies", "plugin:install-development-dependencies"]
 end
 
-task "test" => [ "test:default" ] 
+task "test" => [ "test:core" ]

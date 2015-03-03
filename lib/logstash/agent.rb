@@ -117,8 +117,14 @@ class LogStash::Agent < Clamp::Command
     end
 
     # Make SIGINT shutdown the pipeline.
-    trap_id = Stud::trap("INT") do
-      @logger.warn(I18n.t("logstash.agent.interrupted"))
+    sigint_id = Stud::trap("INT") do
+      @logger.warn(I18n.t("logstash.agent.sigint"))
+      pipeline.shutdown
+    end
+
+    # Make SIGTERM shutdown the pipeline.
+    sigterm_id = Stud::trap("TERM") do
+      @logger.warn(I18n.t("logstash.agent.sigterm"))
       pipeline.shutdown
     end
 
@@ -154,7 +160,8 @@ class LogStash::Agent < Clamp::Command
     return 1
   ensure
     @log_fd.close if @log_fd
-    Stud::untrap("INT", trap_id) unless trap_id.nil?
+    Stud::untrap("INT", sigint_id) unless sigint_id.nil?
+    Stud::untrap("TERM", sigterm_id) unless sigterm_id.nil?
   end # def execute
 
   def show_version
@@ -287,21 +294,29 @@ class LogStash::Agent < Clamp::Command
   end # def configure_plugin_path
 
   def load_config(path)
+    begin
+      uri = URI.parse(path)
 
-    uri = URI.parse(path)
-    case uri.scheme
-    when nil then
+      case uri.scheme
+      when nil then
+        local_config(path)
+      when /http/ then
+        fetch_config(uri)
+      when "file" then
+        local_config(uri.path)
+      else
+        fail(I18n.t("logstash.agent.configuration.scheme-not-supported", :path => path))
+      end
+    rescue URI::InvalidURIError
+      # fallback for windows.
+      # if the parsing of the file failed we assume we can reach it locally.
+      # some relative path on windows arent parsed correctly (.\logstash.conf)
       local_config(path)
-    when /http/ then
-      fetch_config(uri)
-    when "file" then
-      local_config(uri.path)
-    else
-      fail(I18n.t("logstash.agent.configuration.scheme-not-supported", :path => path))
     end
   end
 
   def local_config(path)
+    path = File.expand_path(path)
     path = File.join(path, "*") if File.directory?(path)
 
     if Dir.glob(path).length == 0
@@ -309,6 +324,7 @@ class LogStash::Agent < Clamp::Command
     end
 
     config = ""
+    encoding_issue_files = []
     Dir.glob(path).sort.each do |file|
       next unless File.file?(file)
       if file.match(/~$/)
@@ -316,7 +332,14 @@ class LogStash::Agent < Clamp::Command
         next
       end
       @logger.debug("Reading config file", :file => file)
-      config << File.read(file) + "\n"
+      cfg = File.read(file)
+      if !cfg.ascii_only? && !cfg.valid_encoding?
+        encoding_issue_files << file
+      end
+      config << cfg + "\n"
+    end
+    if (encoding_issue_files.any?)
+      fail("The following config files contains non-ascii characters but are not UTF-8 encoded #{encoding_issue_files}")
     end
     return config
   end # def load_config

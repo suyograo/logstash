@@ -32,6 +32,14 @@ class LogStashConfigAsciiDocGenerator
     else
       @contrib_list = []
     end
+
+    if File.exists?("rakelib/default_plugins.rb")
+      # list of supported / shipped with Logstash plugins
+      @supported_plugins = eval(File.read("rakelib/default_plugins.rb"))
+    else
+      # we support nothing???
+      @supported_plugins = []
+    end
   end
 
   def parse(string)
@@ -182,7 +190,7 @@ class LogStashConfigAsciiDocGenerator
       mixin.downcase!
       #parse(File.new(File.join(base, "..", "plugin_mixins", "#{mixin}.rb")).read)
       #TODO: RP make this work better with the naming
-      mixinfile = Dir.glob(File.join(LogStash::Environment.plugins_home,'gems',"logstash-mixin-#{mixin.split('_').first}-*",'lib/logstash/plugin_mixins', "#{mixin}.rb")).first
+      mixinfile = Dir.glob(File.join(LogStash::Environment.logstash_gem_home,'gems',"logstash-mixin-#{mixin.split('_').first}-*",'lib/logstash/plugin_mixins', "#{mixin}.rb")).first
       parse(File.new(mixinfile).read)
   
     end
@@ -206,6 +214,9 @@ class LogStashConfigAsciiDocGenerator
     elsif klass.ancestors.include?(LogStash::Codecs::Base)
       section = "codec"
     end
+
+    plugin_name = "logstash-" + section + "-" + @name
+    default_plugin = @supported_plugins.include?(plugin_name)
 
     template_file = File.join(File.dirname(__FILE__), "plugin-doc.asciidoc.erb")
     template = ERB.new(File.new(template_file).read, nil, "-")

@@ -6,7 +6,7 @@ lib_path = File.expand_path(File.join(File.dirname(__FILE__), "./lib"))
 $:.unshift(lib_path)
 
 require "logstash/environment"
-LogStash::Environment.set_gem_paths!
+LogStash::Environment.bundler_setup!
 
 # typical required gems and libs
 require "i18n"
@@ -22,7 +22,6 @@ require "rspec/core/runner"
 require "logstash/namespace"
 require "logstash/program"
 require "logstash/agent"
-require "logstash/kibana"
 require "logstash/util"
 require "logstash/errors"
 require "logstash/pipeline"

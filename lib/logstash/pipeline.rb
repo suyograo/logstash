@@ -81,6 +81,8 @@ class LogStash::Pipeline
     @ready = true
 
     @logger.info("Pipeline started")
+    @logger.terminal("Logstash startup completed")
+
     wait_inputs
 
     if filters?
@@ -93,6 +95,7 @@ class LogStash::Pipeline
     wait_outputs
 
     @logger.info("Pipeline shutdown complete.")
+    @logger.terminal("Logstash shutdown completed")
 
     # exit code
     return 0
@@ -225,12 +228,16 @@ class LogStash::Pipeline
   def outputworker
     LogStash::Util::set_thread_name(">output")
     @outputs.each(&:worker_setup)
+
     while true
       event = @filter_to_output.pop
       break if event.is_a?(LogStash::ShutdownEvent)
       output(event)
     end # while true
-    @outputs.each(&:teardown)
+
+    @outputs.each do |output|
+      output.worker_plugins.each(&:teardown)
+    end
   end # def outputworker
 
   # Shutdown this pipeline.

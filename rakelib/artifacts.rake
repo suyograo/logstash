@@ -1,9 +1,5 @@
-def staging
-  "build/staging"
-end
-
 namespace "artifact" do
-  require "logstash/environment"
+
   def package_files
     [
       "LICENSE",
@@ -12,28 +8,28 @@ namespace "artifact" do
       "{bin,lib,spec,locales}/{,**/*}",
       "patterns/**/*",
       "vendor/??*/**/*",
-      File.join(LogStash::Environment.gem_home.gsub(Dir.pwd + "/", ""), "{gems,specifications}/**/*"),
-      "Rakefile",
-      "rakelib/*",
+      "Gemfile*",
+      "logstash-core.gemspec",
     ]
   end
 
-  def exclude_globs
-    return @exclude_globs if @exclude_globs
-    @exclude_globs = []
+  def exclude_paths
+    return @exclude_paths if @exclude_paths
+    @exclude_paths = []
     #gitignore = File.join(File.dirname(__FILE__), "..", ".gitignore")
     #if File.exists?(gitignore)
-      #@exclude_globs += File.read(gitignore).split("\n")
+      #@exclude_paths += File.read(gitignore).split("\n")
     #end
-    @exclude_globs << "spec/reports/**/*"
-    @exclude_globs << "**/*.gem"
-    @exclude_globs << "**/test/files/slow-xpath.xml"
-    return @exclude_globs
+    @exclude_paths << "spec/reports/**/*"
+    @exclude_paths << "**/*.gem"
+    @exclude_paths << "**/test/files/slow-xpath.xml"
+    @exclude_paths << "**/logstash-*/spec"
+    return @exclude_paths
   end
 
   def excludes
     return @excludes if @excludes
-    @excludes = exclude_globs.collect { |g| Rake::FileList[g] }.flatten
+    @excludes = exclude_paths.collect { |g| Rake::FileList[g] }.flatten
   end
 
   def exclude?(path)
@@ -46,15 +42,16 @@ namespace "artifact" do
       Rake::FileList[glob].reject { |path| exclude?(path) }
     end.flatten.uniq
   end
-  
+
+  task "prepare" => ["bootstrap", "plugin:install-default"]
+
   desc "Build a tar.gz of logstash with all dependencies"
-  task "tar" => ["bootstrap", "plugin:install-defaults"] do
+  task "tar" => ["prepare"] do
     require "zlib"
     require "archive/tar/minitar"
     require "logstash/version"
     tarpath = "build/logstash-#{LOGSTASH_VERSION}.tar.gz"
-    tarfile = File.new(tarpath, "wb")
-    gz = Zlib::GzipWriter.new(tarfile, Zlib::BEST_COMPRESSION)
+    gz = Zlib::GzipWriter.new(File.new(tarpath, "wb"), Zlib::BEST_COMPRESSION)
     tar = Archive::Tar::Minitar::Output.new(gz)
     files.each do |path|
       stat = File.lstat(path)
@@ -68,7 +65,7 @@ namespace "artifact" do
         tar.tar.mkdir(path_in_tar, opts)
       else
         tar.tar.add_file_simple(path_in_tar, opts) do |io|
-          File.open(path) do |fd|
+          File.open(path,'rb') do |fd|
             chunk = nil
             size = 0
             size += io.write(chunk) while chunk = fd.read(16384)
@@ -84,8 +81,24 @@ namespace "artifact" do
     puts "Complete: #{tarpath}"
   end
 
+  task "zip" => ["prepare"] do
+    Rake::Task["dependency:rubyzip"].invoke
+    require 'zip'
+    zippath = "build/logstash-#{LOGSTASH_VERSION}.zip"
+    File.unlink(zippath) if File.exists?(zippath)
+    Zip::File.open(zippath, Zip::File::CREATE) do |zipfile|
+      files.each do |path|
+        path_in_zip = "logstash-#{LOGSTASH_VERSION}/#{path}"
+        zipfile.add(path_in_zip, path)
+      end
+    end
+    puts "Complete: #{zippath}"
+  end
+
   def package(platform, version)
     Rake::Task["dependency:fpm"].invoke
+    Rake::Task["dependency:stud"].invoke
+    require "stud/temporary"
     require "fpm/errors" # TODO(sissel): fix this in fpm
     require "fpm/package/dir"
     require "fpm/package/gem" # TODO(sissel): fix this in fpm; rpm needs it.
@@ -101,6 +114,15 @@ namespace "artifact" do
 
     File.join(basedir, "pkg", "logrotate.conf").tap do |path|
       dir.input("#{path}=/etc/logrotate.d/logstash")
+    end
+
+    # Create an empty /var/log/logstash/ directory in the package
+    # This is a bit obtuse, I suppose, but it is necessary until
+    # we find a better way to do this with fpm.
+    Stud::Temporary.directory do |empty|
+      dir.input("#{empty}/=/var/log/logstash")
+      dir.input("#{empty}/=/var/lib/logstash")
+      dir.input("#{empty}/=/etc/logstash/conf.d")
     end
 
     case platform
@@ -178,7 +200,7 @@ namespace "artifact" do
     # - rpm: https://github.com/elasticsearch/logstash/pull/1290
     # - rpm: https://github.com/elasticsearch/logstash/issues/1673
     # - rpm: https://logstash.jira.com/browse/LOGSTASH-1020
-    
+
     out.attributes[:force?] = true # overwrite the rpm/deb/etc being created
     begin
       path = File.join(basedir, "build", out.to_s)
@@ -190,12 +212,12 @@ namespace "artifact" do
   end # def package
 
   desc "Build an RPM of logstash with all dependencies"
-  task "rpm" => ["bootstrap", "plugin:install-defaults"] do
+  task "rpm" => ["prepare"] do
     package("centos", "5")
   end
 
   desc "Build an RPM of logstash with all dependencies"
-  task "deb" => ["bootstrap", "plugin:install-defaults"] do
+  task "deb" => ["prepare"] do
     package("ubuntu", "12.04")
   end
 end

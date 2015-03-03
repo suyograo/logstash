@@ -1,31 +1,59 @@
 require_relative "default_plugins"
-namespace "plugin" do
-  task "install",  :name do |task, args|
-    name = args[:name]
-    puts "[plugin] Installing plugin: #{name}"
 
-    cmd = ['bin/logstash', 'plugin', 'install', name ]
-    system(*cmd)
-    raise RuntimeError, $!.to_s unless $?.success?
+namespace "plugin" do
+
+  def install_plugins(*args)
+    system("bin/plugin", "install", *args)
+    raise(RuntimeError, $!.to_s) unless $?.success?
+  end
+
+  task "install-development-dependencies" do
+    puts("[plugin:install-development-dependencies] Installing development dependencies of all installed plugins")
+    install_plugins("--development")
+
+    task.reenable # Allow this task to be run again
+  end
+
+  task "install", :name do |task, args|
+    name = args[:name]
+    puts("[plugin:install] Installing plugin: #{name}")
+    install_plugins("--no-verify", name)
 
     task.reenable # Allow this task to be run again
   end # task "install"
 
-  task "install-defaults" do
-    gem_path = ENV['GEM_PATH']
-    gem_home = ENV['GEM_HOME']
-    env = {
-      "GEM_PATH" => "#{ENV['GEM_PATH']}:vendor/bundle/jruby/1.9",
-      "GEM_HOME" => "vendor/plugins/jruby/1.9"
-    }
-    if ENV['USE_RUBY'] != '1'
-      jruby = File.join("vendor", "jruby", "bin", "jruby")
-      bundle = File.join("build", "bootstrap", "bin", "bundle")
-      system(env, jruby, "-S", bundle, "install")
-    else
-      system(env, "bundle", "install")
-    end
-    ENV['GEM_PATH'] = gem_path
-    ENV['GEM_HOME'] = gem_home
+  task "install-default" do
+    puts("[plugin:install-default] Installing default plugins")
+    install_plugins("--no-verify", *LogStash::RakeLib::DEFAULT_PLUGINS)
+
+    task.reenable # Allow this task to be run again
+  end
+
+  task "install-core" do
+    puts("[plugin:install-core] Installing core plugins")
+    install_plugins("--no-verify", *LogStash::RakeLib::CORE_SPECS_PLUGINS)
+
+    task.reenable # Allow this task to be run again
+  end
+
+  task "install-jar-dependencies" do
+    puts("[plugin:install-jar-dependencies] Installing jar_dependencies plugins for testing")
+    install_plugins("--no-verify", *LogStash::RakeLib::TEST_JAR_DEPENDENCIES_PLUGINS)
+
+    task.reenable # Allow this task to be run again
+  end
+
+  task "install-vendor" do
+    puts("[plugin:install-jar-dependencies] Installing vendor plugins for testing")
+    install_plugins("--no-verify", *LogStash::RakeLib::TEST_VENDOR_PLUGINS)
+
+    task.reenable # Allow this task to be run again
+  end
+
+  task "install-all" => [ "dependency:octokit" ] do
+    puts("[plugin:install-all] Installing all plugins from https://github.com/logstash-plugins")
+    install_plugins("--no-verify", *LogStash::RakeLib.fetch_all_plugins)
+
+    task.reenable # Allow this task to be run again
   end
 end # namespace "plugin"
