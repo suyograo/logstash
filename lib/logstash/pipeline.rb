@@ -8,6 +8,7 @@ require "logstash/config/file"
 require "logstash/filters/base"
 require "logstash/inputs/base"
 require "logstash/outputs/base"
+require "logstash/util/reporter"
 
 class LogStash::Pipeline
 
@@ -252,6 +253,8 @@ class LogStash::Pipeline
   #
   # This method is intended to be called from another thread
   def shutdown
+    InflightEventsReporter.logger = @logger
+    InflightEventsReporter.start(@input_to_filter, @filter_to_output, @outputs)
     @input_threads.each do |thread|
       # Interrupt all inputs
       @logger.info("Sending shutdown signal to input thread", :thread => thread)
