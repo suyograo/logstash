@@ -1,3 +1,19 @@
+PATH
+  remote: .
+  specs:
+    logstash-core (3.0.0.dev-java)
+      cabin (~> 0.7.0)
+      clamp (~> 0.6.5)
+      concurrent-ruby (~> 0.9.1)
+      filesize (= 0.0.4)
+      gems (~> 0.8.3)
+      i18n (= 0.6.9)
+      jrjackson (~> 0.3.5)
+      minitar (~> 0.5.4)
+      pry (~> 0.10.1)
+      stud (~> 0.0.19)
+      thread_safe (~> 0.3.5)
+      treetop (< 1.5.0)
 GEM
   remote: https://rubygems.org/
   specs:
