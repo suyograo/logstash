@@ -59,9 +59,9 @@ namespace "vendor" do
     end
     tar.close
   end # def untar
-
-  task "jruby" do |task, args|
-    name = task.name.split(":")[1]
+  
+  def setup_jruby(task_name)
+    name = task_name.split(":")[1]
     info = VERSIONS[name]
     version = info["version"]
 
@@ -88,6 +88,12 @@ namespace "vendor" do
       next if out =~ discard_patterns
       vendor(name, out)
     end # untar
+  end  
+
+  task "jruby" do |task, args|
+    # if jruby already exists, do not download
+    # TODO: Validate version as well.
+    setup_jruby(task.name) unless Dir.exists?(File.join("vendor", "jruby"))
   end # jruby
 
   task "all" => "jruby"
