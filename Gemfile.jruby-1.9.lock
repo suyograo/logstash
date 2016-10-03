@@ -73,8 +73,19 @@ GEM
     clamp (0.6.5)
     coderay (1.1.1)
     concurrent-ruby (1.0.0-java)
+    coveralls (0.8.15)
+      json (>= 1.8, < 3)
+      simplecov (~> 0.12.0)
+      term-ansicolor (~> 1.3)
+      thor (~> 0.19.1)
+      tins (>= 1.6.0, < 2)
+    crack (0.4.3)
+      safe_yaml (~> 1.0.0)
     diff-lcs (1.2.5)
     docile (1.1.5)
+    docker-api (1.31.0)
+      excon (>= 0.38.0)
+      json
     domain_name (0.5.20160826)
       unf (>= 0.0.5, < 1.0.0)
     edn (1.1.1)
@@ -87,6 +98,7 @@ GEM
       faraday
       multi_json
     equalizer (0.0.10)
+    excon (0.53.0)
     faraday (0.9.2)
       multipart-post (>= 1.2, < 3)
     ffi (1.9.14-java)
@@ -104,9 +116,17 @@ GEM
       clamp (~> 0.6)
       ffi
       json (>= 1.7.7)
+    ftw (0.0.44)
+      addressable
+      backports (>= 2.6.2)
+      cabin (> 0)
+      http_parser.rb (~> 0.6)
+    gelf (1.3.2)
+      json
     gelfd (0.2.0)
     gem_publisher (1.5.0)
     gems (0.8.3)
+    gmetric (0.1.3)
     hitimes (1.2.4-java)
     http (0.9.9)
       addressable (~> 2.3)
@@ -120,6 +140,7 @@ GEM
     i18n (0.6.9)
     insist (1.0.0)
     jar-dependencies (0.3.5)
+    jdbc-derby (10.11.1.1)
     jls-grok (0.11.4)
       cabin (>= 0.6.0)
     jls-lumberjack (0.0.26)
@@ -212,6 +233,10 @@ GEM
       logstash-core-plugin-api (>= 1.60, <= 2.99)
       metriks
       thread_safe
+    logstash-filter-multiline (3.0.2)
+      jls-grok (~> 0.11.0)
+      logstash-core-plugin-api (>= 1.60, <= 2.99)
+      logstash-patterns-core
     logstash-filter-mutate (3.1.3)
       logstash-core-plugin-api (>= 1.60, <= 2.99)
     logstash-filter-ruby (3.0.2)
@@ -483,6 +508,8 @@ GEM
       xmpp4r (= 0.5)
     logstash-patterns-core (4.0.2)
       logstash-core-plugin-api (>= 1.60, <= 2.99)
+    longshoreman (0.0.7)
+      docker-api (~> 1.0, >= 1.21.4)
     lru_redux (1.1.0)
     mail (2.6.4)
       mime-types (>= 1.16, < 4)
@@ -514,6 +541,7 @@ GEM
       mustache (= 0.99.8)
       stud
     polyglot (0.3.5)
+    poseidon (0.0.5)
     pry (0.10.4-java)
       coderay (~> 1.1.0)
       method_source (~> 0.8.1)
@@ -538,6 +566,9 @@ GEM
       rspec-support (~> 3.1.0)
     rspec-mocks (3.1.3)
       rspec-support (~> 3.1.0)
+    rspec-sequencing (0.1.0)
+      concurrent-ruby
+      rspec (>= 3.0.0)
     rspec-support (3.1.2)
     rspec-wait (0.0.9)
       rspec (>= 3, < 4)
@@ -547,6 +578,7 @@ GEM
     rubyzip (1.1.7)
     rufus-scheduler (3.0.9)
       tzinfo
+    safe_yaml (1.0.4)
     sawyer (0.6.0)
       addressable (~> 2.3.5)
       faraday (~> 0.8, < 0.10)
@@ -570,8 +602,12 @@ GEM
       ffi
     statsd-ruby (1.2.0)
     stud (0.0.22)
+    term-ansicolor (1.3.2)
+      tins (~> 1.0)
+    thor (0.19.1)
     thread_safe (0.3.5-java)
     tilt (2.0.5)
+    timecop (0.8.1)
     tins (1.6.0)
     treetop (1.4.15)
       polyglot
@@ -595,6 +631,10 @@ GEM
     user_agent_parser (2.3.0)
     webhdfs (0.8.0)
       addressable
+    webmock (1.21.0)
+      addressable (>= 2.3.6)
+      crack (>= 0.3.2)
+    webrick (1.3.1)
     xml-simple (1.1.5)
     xmpp4r (0.5)
 
@@ -603,11 +643,20 @@ PLATFORMS
 
 DEPENDENCIES
   benchmark-ips
+  childprocess
   ci_reporter_rspec (= 1.0.0)
+  coveralls
+  docker-api (= 1.31.0)
+  elasticsearch
   file-dependencies (= 0.1.6)
   flores (~> 0.0.6)
   fpm (~> 1.3.3)
+  ftw (~> 0.0.42)
+  gelf (= 1.3.2)
   gems (~> 0.8.3)
+  gmetric
+  jar-dependencies
+  jdbc-derby
   logstash-codec-collectd
   logstash-codec-dots
   logstash-codec-edn
@@ -638,6 +687,7 @@ DEPENDENCIES
   logstash-filter-json
   logstash-filter-kv
   logstash-filter-metrics
+  logstash-filter-multiline
   logstash-filter-mutate
   logstash-filter-ruby
   logstash-filter-sleep
@@ -702,11 +752,24 @@ DEPENDENCIES
   logstash-output-udp
   logstash-output-webhdfs
   logstash-output-xmpp
+  logstash-patterns-core
+  longshoreman
   octokit (= 3.8.0)
   pleaserun
+  poseidon
+  pry
   rack-test
   rspec (~> 3.1.0)
+  rspec-sequencing
+  rspec-wait
+  ruby-maven (~> 3.3)
   rubyzip (~> 1.1.7)
   simplecov
+  sinatra
+  snappy
   stud (~> 0.0.22)
+  term-ansicolor (~> 1.3.2)
+  timecop
   tins (= 1.6)
+  webmock (~> 1.21.0)
+  webrick

@@ -8,6 +8,8 @@ gem "logstash-core-plugin-api", :path => "./logstash-core-plugin-api"
 gem "file-dependencies", "0.1.6"
 gem "ci_reporter_rspec", "1.0.0", :group => :development
 gem "simplecov", :group => :development
+gem "term-ansicolor", "~> 1.3.2", :group => :development # 1.4.0 uses ruby 2.0
+gem "docker-api", "1.31.0", :group => :development # 1.32.0 uses ruby 2.0
 gem "tins", "1.6", :group => :development
 gem "rspec", "~> 3.1.0", :group => :development
 gem "logstash-devutils", "~> 1.1", :group => :development
@@ -110,3 +112,25 @@ gem "logstash-output-stdout"
 gem "logstash-output-tcp"
 gem "logstash-output-udp"
 gem "logstash-output-webhdfs"
+gem "logstash-filter-multiline"
+gem "jar-dependencies", ">= 0"
+gem "ruby-maven", "~> 3.3"
+gem "logstash-patterns-core", ">= 0"
+gem "pry", ">= 0"
+gem "rspec-wait", ">= 0"
+gem "childprocess", ">= 0"
+gem "ftw", "~> 0.0.42"
+gem "rspec-sequencing", ">= 0"
+gem "gmetric", ">= 0"
+gem "gelf", "= 1.3.2"
+gem "timecop", ">= 0"
+gem "jdbc-derby", ">= 0"
+gem "docker-api", "1.31.0"
+gem "coveralls", ">= 0"
+gem "longshoreman", ">= 0"
+gem "elasticsearch", ">= 0"
+gem "sinatra", ">= 0"
+gem "webrick", ">= 0"
+gem "poseidon", ">= 0"
+gem "snappy", ">= 0"
+gem "webmock", "~> 1.21.0"
