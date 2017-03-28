@@ -1,0 +1,2 @@
+path.data: ${TEST_LS_DATA_PATH}
+pipeline.batch.size: ${TEST_LS_BATCH_SIZE}

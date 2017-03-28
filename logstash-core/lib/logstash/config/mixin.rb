@@ -7,6 +7,7 @@ require "logstash/util/safe_uri"
 require "logstash/version"
 require "logstash/environment"
 require "logstash/util/plugin_version"
+require "logstash/util/environment_variables"
 require "filesize"
 
 LogStash::Environment.load_locale!
@@ -39,8 +40,6 @@ module LogStash::Config::Mixin
   PLUGIN_VERSION_1_0_0 = LogStash::Util::PluginVersion.new(1, 0, 0)
   PLUGIN_VERSION_0_9_0 = LogStash::Util::PluginVersion.new(0, 9, 0)
 
-  ENV_PLACEHOLDER_REGEX = /\$\{(?<name>\w+)(\:(?<default>[^}]*))?\}/
-
   # This method is called when someone does 'include LogStash::Config'
   def self.included(base)
     # Add the DSL methods to the 'base' given.
@@ -59,7 +58,7 @@ module LogStash::Config::Mixin
           value[valueArrayIndex] = deep_replace(value[valueArrayIndex])
         end
       else
-        return replace_env_placeholders(value)
+        return LogStash::Util::EnvironmentVariable::resolve(value)
       end
     end
   end
@@ -157,27 +156,6 @@ module LogStash::Config::Mixin
 
     @config = params
   end # def config_init
-
-  # Replace all environment variable references in 'value' param by environment variable value and return updated value
-  # Process following patterns : $VAR, ${VAR}, ${VAR:defaultValue}
-  def replace_env_placeholders(value)
-    return value unless value.is_a?(String)
-
-    value.gsub(ENV_PLACEHOLDER_REGEX) do |placeholder|
-      # Note: Ruby docs claim[1] Regexp.last_match is thread-local and scoped to
-      # the call, so this should be thread-safe.
-      #
-      # [1] http://ruby-doc.org/core-2.1.1/Regexp.html#method-c-last_match
-      name = Regexp.last_match(:name)
-      default = Regexp.last_match(:default)
-
-      replacement = ENV.fetch(name, default)
-      if replacement.nil?
-        raise LogStash::ConfigurationError, "Cannot evaluate `#{placeholder}`. Environment variable `#{name}` is not set and there is no default value given."
-      end
-      replacement
-    end
-  end # def replace_env_placeholders
 
   module DSL
     attr_accessor :flags

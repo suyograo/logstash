@@ -146,4 +146,32 @@ describe LogStash::Settings do
       end
     end
   end
+  
+  context "should support environment variables" do
+    before do
+      ENV["bar"] = "foo"
+      ENV["f$$"] = "bar"
+    end
+
+    after do
+      ENV.delete("bar")
+      ENV.delete("f$$")
+    end
+
+    subject do
+      settings = described_class.new
+      settings
+    end
+    
+    let(:yaml_path) { File.expand_path(File.join(File.dirname(__FILE__), "..", "..", "fixtures", "test_logstash.yml")) }
+
+    it "should support $ in values" do
+      subject.from_yaml(yaml_path)
+    end
+
+    it "should not support $ in environment variable name" do
+      expect(subject.oneString).to(be == "${f$$:val}")
+    end
+  end
+
 end
